@@ -93,7 +93,23 @@ Each invocation starts with `== smtp-recipient-probe YYYY-MM-DD_HH:MM`. The time
 .. Meaning: Inputs validated. No DNS lookups or network connections performed.
 ```
 
-Normal messages, including help, launcher setup, and probe reports, start with `.. `. Execution-error messages start with `** `. A negative recipient result such as `recipient_unavailable` is a normal probe observation and uses `.. `; it does not itself mean the program failed to execute. These prefixes do not change JSON report data or exit codes.
+Primary output starts with `.. `: the target, overall `Result` and `Meaning`, MX server headings, each server's `MX result` and `Meaning`, final submission/ownership statements, and launcher setup success. Supporting details start with `.... `: the control address, plans, individual target/control observations and SMTP replies, coverage notes, and usage guidance. Execution-error messages retain `** `, and the build banner retains `== `.
+
+This simulated excerpt shows the distinction:
+
+```text
+.. MX server 1/2: mx.example.com (TLS: verified)
+.... Test 1 - target address you supplied: recipient@example.com
+.... Result: accepted
+.... SMTP reply: 250 2.1.5 OK
+.... Test 2 - presumed nonexistent control: control@example.com
+.... Result: recipient_unavailable
+.... SMTP reply: 550 5.1.1 No such recipient
+.. MX result: accepted_selectively
+.. Meaning: Target accepted; presumed nonexistent control returned 550/5.1.1. This server distinguished the recipients; ownership is unknown.
+```
+
+A negative recipient result such as `recipient_unavailable` remains a normal probe observation: the overall or per-MX conclusion uses `.. `, while an individual check's result uses `.... `. It does not itself mean the program failed to execute. These prefixes do not change JSON report data or exit codes.
 
 Each numbered **MX server** section reports two separate recipient checks:
 
