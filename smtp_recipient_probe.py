@@ -221,20 +221,35 @@ def print_report(report: dict) -> None:
         or (report["status"] == "inconclusive" and not report["hosts"])
     )
     message(f"Target: {report['target']}")
+    if report["control"] is not None:
+        message(f"Control: {report['control']} (presumed nonexistent comparison address)")
+        message("Check plan: Test 1 checks the target; Test 2 checks the control in a separate transaction on the same MX server.")
+    else:
+        message("Control: disabled (--control none); only Test 1, the target check, is planned.")
+    message(f"Server plan: repeat the recipient checks on up to {report['settings']['max_mx']} distinct MX servers.")
     message(f"Result: {report['status']}", error=execution_error)
     message(f"Meaning: {report['explanation']}", error=execution_error)
     if report.get("internal_error"):
         message(f"Internal error: {report['internal_error']}", error=True)
-    for host in report["hosts"]:
-        message(f"MX {host['host']}: {host['status']} (TLS: {host['tls']})")
-        message(f"  Meaning: {host['explanation']}")
-        for recipient in ("target", "control"):
+    for server_number, host in enumerate(report["hosts"], 1):
+        message(f"MX server {server_number}/{len(report['hosts'])}: {host['host']} (TLS: {host['tls']})")
+        for test_number, recipient in enumerate(("target", "control"), 1):
+            if recipient == "control" and report["control"] is None:
+                message("  Test 2 - control: disabled (--control none)")
+                continue
+            label = "target address you supplied" if recipient == "target" else "presumed nonexistent control"
+            message(f"  Test {test_number} - {label}: {report[recipient]}")
             observation = host.get(recipient, {})
+            message(f"    Result: {observation.get('observation', 'not_tested')}")
             if observation.get("code") is not None:
                 reply = str(observation.get("reply", ""))
                 if not reply.startswith(str(observation["code"])):
                     reply = f"{observation['code']} {reply}"
-                message(f"  {recipient}: {terminal_safe(reply)}")
+                message(f"    SMTP reply: {terminal_safe(reply)}")
+            else:
+                message("    SMTP reply: none recorded")
+        message(f"  MX result: {host['status']}")
+        message(f"  Meaning: {host['explanation']}")
         if host.get("error"):
             message(f"  Diagnostic: {host['error']}", error=True)
     for note in report.get("coverage_notes", []):

@@ -84,7 +84,7 @@ Only ordinary ASCII dot-atom email local parts and DNS domains are supported. Qu
 
 ## Console output
 
-Each invocation starts with `== smtp-recipient-probe YYYY-MM-DD_HH:MM`. The timestamp is recorded when the package is built, so it stays the same between runs. The following dry-run opening uses an illustrative build timestamp:
+Each invocation starts with `== smtp-recipient-probe YYYY-MM-DD_HH:MM`. The timestamp is recorded when the package is built, so it stays the same between runs. The following dry-run excerpt uses an illustrative build timestamp:
 
 ```text
 == smtp-recipient-probe 2026-11-07_19:28
@@ -94,6 +94,15 @@ Each invocation starts with `== smtp-recipient-probe YYYY-MM-DD_HH:MM`. The time
 ```
 
 Normal messages, including help, launcher setup, and probe reports, start with `.. `. Execution-error messages start with `** `. A negative recipient result such as `recipient_unavailable` is a normal probe observation and uses `.. `; it does not itself mean the program failed to execute. These prefixes do not change JSON report data or exit codes.
+
+Each numbered **MX server** section reports two separate recipient checks:
+
+1. **Test 1 — target:** check the address you supplied with `--target`.
+2. **Test 2 — control:** check a presumed nonexistent comparison address. With the default `--control auto`, one random address is generated in the target's domain and reused across all tested MX servers.
+
+The two checks use separate `MAIL`/`RCPT` transactions with the same sender. The server's responses are compared: an accepted target plus a control rejected with `550 5.1.1` produces `accepted_selectively`. No message is submitted in either transaction.
+
+The default is **up to two MX servers**, each receiving the same pair of checks: **up to four recipient checks in total**. The server numbers identify where the checks ran; Test 1 and Test 2 identify which address was checked. `--control none` disables Test 2, and connection or session failures can prevent either check from running. Disabled and untested checks are explicitly labeled in the report.
 
 ## Interpret the result
 
