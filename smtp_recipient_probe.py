@@ -7,10 +7,12 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 import sysconfig
 import tempfile
 import time
+import tomllib
 
 from probe_common import (
     Deadline, DeadlineExceeded, InvariantError, email_address, helo_name,
@@ -53,8 +55,9 @@ def parser() -> argparse.ArgumentParser:
     cli = ConsoleParser(description=__doc__, epilog="Acceptance does not verify ownership or final delivery. No email is submitted.")
     cli.add_argument("--symlink-cli", action="store_true", help="Link the installed command into ~/bin and exit; use this option alone.")
     cli.add_argument("--target", metavar="ADDRESS", action=SingleValue, help="Required for probing: single recipient.")
-    cli.add_argument("--mail-from", metavar="ADDRESS", dest="sender", action=SingleValue, help="Required for probing: operator envelope sender.")
-    cli.add_argument("--helo", metavar="NAME", action=SingleValue, help="Required for probing: client FQDN or IP literal.")
+    cli.add_argument("--mail-from", metavar="ADDRESS", dest="sender", action=SingleValue, help="Envelope sender; overrides SMTP_PROBE_MAIL_FROM and config.")
+    cli.add_argument("--helo", metavar="NAME", action=SingleValue, help="Client FQDN or IP literal; overrides SMTP_PROBE_HELO and config.")
+    cli.add_argument("--config", metavar="PATH", action=SingleValue, help="Read identity defaults from this TOML file instead of automatic lookup.")
     cli.add_argument("--control", default="auto", metavar="auto|none|ADDRESS", action=SingleValue)
     cli.add_argument("--max-mx", type=int, choices=range(1, 4), default=2)
     cli.add_argument("--timeout", type=positive_seconds, default=15.0, metavar="SECONDS")
@@ -63,6 +66,52 @@ def parser() -> argparse.ArgumentParser:
     cli.add_argument("--json", metavar="PATH")
     cli.add_argument("--dry-run", action="store_true")
     return cli
+
+
+def config_candidates() -> list[Path]:
+    """Find config beside the resolved launcher, then beside the Python script."""
+    filename = "smtp-recipient-probe.toml"
+    candidates = []
+    executable = Path(sys.argv[0])
+    if not executable.is_file():
+        found = shutil.which(sys.argv[0])
+        executable = Path(found) if found else None
+    if executable is not None:
+        candidates.append(executable.resolve().parent / filename)
+    source_config = Path(__file__).resolve().parent / filename
+    if source_config not in candidates:
+        candidates.append(source_config)
+    return candidates
+
+
+def load_config(path: str | None = None) -> dict:
+    if path is not None:
+        config_path = Path(path).expanduser()
+    else:
+        config_path = next((candidate for candidate in config_candidates()
+                            if candidate.exists() or candidate.is_symlink()), None)
+    if config_path is None:
+        return {}
+    try:
+        config = tomllib.loads(config_path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"Could not read config {config_path}: {exc}") from exc
+    if set(config) - {"smtp"}:
+        raise ValueError(f"Config {config_path} supports only the [smtp] section")
+    smtp = config.get("smtp", {})
+    if not isinstance(smtp, dict) or set(smtp) - {"mail_from", "helo"}:
+        raise ValueError(f"Config {config_path}: [smtp] supports only mail_from and helo")
+    if any(not isinstance(value, str) for value in smtp.values()):
+        raise ValueError(f"Config {config_path}: mail_from and helo must be strings")
+    return smtp
+
+
+def apply_identity_defaults(args: argparse.Namespace) -> None:
+    defaults = load_config(args.config)
+    if args.sender is None:
+        args.sender = os.environ.get("SMTP_PROBE_MAIL_FROM", defaults.get("mail_from"))
+    if args.helo is None:
+        args.helo = os.environ.get("SMTP_PROBE_HELO", defaults.get("helo"))
 
 
 def symlink_cli() -> Path:
@@ -93,6 +142,9 @@ def symlink_cli() -> Path:
 
 
 def validate_settings(args: argparse.Namespace) -> dict:
+    missing = [flag for flag, value in (("--target", args.target), ("--mail-from", args.sender), ("--helo", args.helo)) if value is None]
+    if missing:
+        raise ValueError("Missing " + ", ".join(missing) + ". Supply the sender and HELO through CLI options, SMTP_PROBE_MAIL_FROM/SMTP_PROBE_HELO, or [smtp] in smtp-recipient-probe.toml.")
     target = email_address(args.target, "target")
     sender = email_address(args.sender, "mail-from")
     helo = helo_name(args.helo)
@@ -221,6 +273,8 @@ def print_report(report: dict) -> None:
         or (report["status"] == "inconclusive" and not report["hosts"])
     )
     message(f"Target: {report['target']}")
+    message(f"MAIL FROM: {report['sender']}", secondary=True)
+    message(f"HELO: {report['helo']}", secondary=True)
     if report["control"] is not None:
         message(f"Control: {report['control']} (presumed nonexistent comparison address)", secondary=True)
         message("Check plan: Test 1 checks the target; Test 2 checks the control in a separate transaction on the same MX server.", secondary=True)
@@ -279,10 +333,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.symlink_cli:
                 if len(arguments) != 1:
                     cli.error("--symlink-cli must be used alone")
-            else:
-                missing = [flag for flag, value in (("--target", args.target), ("--mail-from", args.sender), ("--helo", args.helo)) if value is None]
-                if missing:
-                    cli.error("the following arguments are required for probing: " + ", ".join(missing))
+            elif args.target is None:
+                cli.error("the following argument is required for probing: --target")
         except SystemExit as exc:
             if exc.code:
                 invalid_input()
@@ -297,8 +349,9 @@ def main(argv: list[str] | None = None) -> int:
             message("Ensure ~/bin is on PATH to run smtp-recipient-probe without activating the environment.", secondary=True)
             return 0
         try:
+            apply_identity_defaults(args)
             settings = validate_settings(args)
-        except ValueError as exc:
+        except (ValueError, OSError, RuntimeError) as exc:
             invalid_input(exc)
             return 2
         if args.json:

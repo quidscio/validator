@@ -1,0 +1,6 @@
+# Copy to smtp-recipient-probe.toml and replace these fictional values.
+# The private filename is ignored by Git; this example is safe to commit.
+# CLI options override environment variables, which override this file.
+[smtp]
+mail_from = "operator@example.net"
+helo = "client.example.net"

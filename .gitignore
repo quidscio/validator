@@ -11,3 +11,4 @@ htmlcov/
 result.json
 *.tmp
 smtp_probe_build.py
+smtp-recipient-probe.toml

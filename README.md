@@ -14,6 +14,9 @@ python3 --version  # Must be 3.11 or newer.
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
+# Create your private defaults file if it does not already exist.
+cp -n smtp-recipient-probe.example.toml smtp-recipient-probe.toml
+# Edit smtp-recipient-probe.toml with your sender and HELO values.
 smtp-recipient-probe --symlink-cli
 deactivate
 export PATH="$HOME/bin:$PATH"
@@ -34,9 +37,56 @@ If the environment is already installed, create the link from the project direct
 
 The editable installation (`pip install -e .`) uses source changes on the next run. Its banner retains the timestamp of the last package build in `America/New_York` time; to refresh that timestamp, run `.venv/bin/python -m pip install -e .` from the project directory. The link remains valid across updates at the same path. If you move the project or virtual environment, recreate the environment, reinstall the package, and rerun the link setup.
 
+## Save sender and HELO defaults
+
+For this editable installation, keep `smtp-recipient-probe.toml` beside the Python script in `/mnt/c/q/arc/projects/validator`. Start with `smtp-recipient-probe.example.toml`, then replace its fictional values:
+
+```toml
+[smtp]
+mail_from = "operator@example.net"
+helo = "client.example.net"
+```
+
+The private `smtp-recipient-probe.toml` is ignored by Git. Only the example file is committed. No mailbox password or other credentials belong in this file.
+
+Without `--config`, the program checks for `smtp-recipient-probe.toml` in this order:
+
+1. Beside the resolved executable launcher. For the `~/bin` symlink in this setup, that is `.venv/bin`.
+2. Beside `smtp_recipient_probe.py`, which is the project folder for an editable installation.
+
+The first existing file is used; the files are not merged. The current working directory is not searched, so the saved defaults work when you launch the command from another directory. To select a particular file instead of automatic discovery, use:
+
+```bash
+smtp-recipient-probe --config /path/to/private.toml \
+  --target recipient@example.com --dry-run
+```
+
+An explicitly selected file must exist and be valid. Missing required identities or invalid configuration stop the command before networking. `--help` and standalone `--symlink-cli` do not read configuration.
+
+You can also supply defaults through environment variables:
+
+```bash
+export SMTP_PROBE_MAIL_FROM='operator@example.net'
+export SMTP_PROBE_HELO='client.example.net'
+```
+
+For each value, precedence is **command-line option > environment variable > config file**. For example, `--helo client.other.example.net` overrides the saved HELO while retaining the saved sender. The target is always supplied with `--target`; it is not taken from configuration.
+
 ## Run
 
-First try a dry run. This example uses reserved domains and performs **no DNS lookups or network connections**:
+After saving your defaults, the usual command needs only the target. First use `--dry-run` to validate arguments and defaults with **no DNS lookups or network connections**:
+
+```bash
+smtp-recipient-probe --target recipient@example.com --dry-run
+```
+
+To perform the probe, replace the example target with the address to check and omit `--dry-run`:
+
+```bash
+smtp-recipient-probe --target recipient@example.com --json result.json
+```
+
+Explicit identity arguments remain available. This dry-run example uses reserved domains and overrides any saved values:
 
 ```bash
 smtp-recipient-probe \
@@ -56,12 +106,11 @@ smtp-recipient-probe \
   --json result.json
 ```
 
-You can also enter the target at a terminal prompt while retaining the same sender and HELO arguments:
+You can also enter the target at a terminal prompt and use your saved defaults:
 
 ```bash
 read -r -p 'Email to check: ' target
-smtp-recipient-probe --target "$target" \
-  --mail-from operator@example.net --helo client.example.net --json result.json
+smtp-recipient-probe --target "$target" --json result.json
 ```
 
 From the project directory, the script form works too: `.venv/bin/python smtp_recipient_probe.py` followed by the same arguments. No mailbox password is required. No addresses are hard-coded or probed during installation or testing.
@@ -70,8 +119,9 @@ From the project directory, the script form works too: `.venv/bin/python smtp_re
 | --- | --- |
 | `--symlink-cli` | Standalone setup command: create or update the launcher in `~/bin`, then exit. |
 | `--target ADDRESS` | Required single recipient when probing. |
-| `--mail-from ADDRESS` | Required operator-supplied envelope sender when probing. |
-| `--helo NAME` | Required operator client FQDN or SMTP IP literal when probing. |
+| `--mail-from ADDRESS` | Envelope sender; overrides `SMTP_PROBE_MAIL_FROM` and config `smtp.mail_from`. A value must be provided by one of these sources. |
+| `--helo NAME` | Client FQDN or SMTP IP literal; overrides `SMTP_PROBE_HELO` and config `smtp.helo`. A value must be provided by one of these sources. |
+| `--config PATH` | Use this TOML file instead of automatic config discovery. |
 | `--control auto\|none\|ADDRESS` | Default `auto`: generate one random presumed nonexistent control in the target domain and reuse it across MX hosts. `none` disables it; an explicit control must be a different address in the same domain. |
 | `--max-mx N` | Maximum distinct MX hosts, 1–3; default 2. |
 | `--timeout SECONDS` | Per-operation timeout; default 15. |
