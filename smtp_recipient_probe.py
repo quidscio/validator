@@ -281,10 +281,6 @@ def print_report(report: dict) -> None:
     else:
         message("Control: disabled (--control none); only Test 1, the target check, is planned.", secondary=True)
     message(f"Server plan: repeat the recipient checks on up to {report['settings']['max_mx']} distinct MX servers.", secondary=True)
-    message(f"Result: {report['status']}", error=execution_error)
-    message(f"Meaning: {report['explanation']}", error=execution_error)
-    if report.get("internal_error"):
-        message(f"Internal error: {report['internal_error']}", error=True)
     for server_number, host in enumerate(report["hosts"], 1):
         message(f"MX server {server_number}/{len(report['hosts'])}: {host['host']} (TLS: {host['tls']})")
         for test_number, recipient in enumerate(("target", "control"), 1):
@@ -294,7 +290,6 @@ def print_report(report: dict) -> None:
             label = "target address you supplied" if recipient == "target" else "presumed nonexistent control"
             message(f"Test {test_number} - {label}: {report[recipient]}", secondary=True)
             observation = host.get(recipient, {})
-            message(f"Result: {observation.get('observation', 'not_tested')}", secondary=True)
             if observation.get("code") is not None:
                 reply = str(observation.get("reply", ""))
                 if not reply.startswith(str(observation["code"])):
@@ -302,14 +297,19 @@ def print_report(report: dict) -> None:
                 message(f"SMTP reply: {terminal_safe(reply)}", secondary=True)
             else:
                 message("SMTP reply: none recorded", secondary=True)
-        message(f"MX result: {host['status']}")
-        message(f"Meaning: {host['explanation']}")
+            message(f"Test {test_number} result: {observation.get('observation', 'not_tested')}", secondary=True)
         if host.get("error"):
             message(f"Diagnostic: {host['error']}", error=True)
+        message(f"MX result: {host['status']}")
+        message(f"Meaning: {host['explanation']}")
     for note in report.get("coverage_notes", []):
         message(f"Coverage: {note}", secondary=True)
     for step in report.get("planned_operations", []):
         message(f"Plan: {step}", secondary=True)
+    if report.get("internal_error"):
+        message(f"Internal error: {report['internal_error']}", error=True)
+    message(f"Result: {report['status']}", error=execution_error)
+    message(f"Meaning: {report['explanation']}", error=execution_error)
     if report["invariant_ok"]:
         message("Message submitted: no")
     else:
