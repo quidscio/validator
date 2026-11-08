@@ -32,7 +32,7 @@ If the environment is already installed, create the link from the project direct
 .venv/bin/smtp-recipient-probe --symlink-cli
 ```
 
-The editable installation (`pip install -e .`) uses source changes on the next run. The link remains valid across updates at the same path. If you move the project or virtual environment, recreate the environment, reinstall the package, and rerun the link setup.
+The editable installation (`pip install -e .`) uses source changes on the next run. Its banner retains the timestamp of the last package build in `America/New_York` time; to refresh that timestamp, run `.venv/bin/python -m pip install -e .` from the project directory. The link remains valid across updates at the same path. If you move the project or virtual environment, recreate the environment, reinstall the package, and rerun the link setup.
 
 ## Run
 
@@ -81,6 +81,19 @@ From the project directory, the script form works too: `.venv/bin/python smtp_re
 | `--dry-run` | Validate inputs and describe the plan without DNS or network activity. |
 
 Only ordinary ASCII dot-atom email local parts and DNS domains are supported. Quoted local parts, internationalized addresses, display names, address lists, and control characters are rejected. Local-part case is preserved; domain case is normalized.
+
+## Console output
+
+Each invocation starts with `== smtp-recipient-probe YYYY-MM-DD_HH:MM`. The timestamp is recorded when the package is built, so it stays the same between runs. The following dry-run opening uses an illustrative build timestamp:
+
+```text
+== smtp-recipient-probe 2026-11-07_19:28
+.. Target: recipient@example.com
+.. Result: dry_run
+.. Meaning: Inputs validated. No DNS lookups or network connections performed.
+```
+
+Normal messages, including help, launcher setup, and probe reports, start with `.. `. Execution-error messages start with `** `. A negative recipient result such as `recipient_unavailable` is a normal probe observation and uses `.. `; it does not itself mean the program failed to execute. These prefixes do not change JSON report data or exit codes.
 
 ## Interpret the result
 

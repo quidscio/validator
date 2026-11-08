@@ -1,6 +1,7 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools>=68", "tzdata>=2024.1"]
+build-backend = "build_backend"
+backend-path = ["."]
 
 [project]
 name = "smtp-recipient-probe"
@@ -17,7 +18,7 @@ dev = ["pytest>=8,<10"]
 smtp-recipient-probe = "smtp_recipient_probe:main"
 
 [tool.setuptools]
-py-modules = ["smtp_recipient_probe", "probe_common", "probe_dns", "probe_smtp"]
+py-modules = ["smtp_recipient_probe", "probe_common", "probe_dns", "probe_smtp", "smtp_probe_build"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

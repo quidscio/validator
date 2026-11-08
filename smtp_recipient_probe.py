@@ -18,6 +18,27 @@ from probe_common import (
 )
 
 
+def message(text: str, *, error: bool = False, file=None) -> None:
+    """Prefix every console line, including multiline help and diagnostics."""
+    stream = file if file is not None else (sys.stderr if error else sys.stdout)
+    prefix = "** " if error else ".. "
+    for line in text.splitlines():
+        print(prefix + terminal_safe(line), file=stream, flush=True)
+
+
+class ConsoleParser(argparse.ArgumentParser):
+    def _print_message(self, text, file=None):
+        if text:
+            message(text, error=file is sys.stderr, file=file)
+
+
+def invalid_input(reason: object | None = None) -> None:
+    message("Result: invalid_input", error=True)
+    if reason is not None:
+        message(f"Reason: {reason}", error=True)
+    message("No network operations performed.")
+
+
 class SingleValue(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         seen = getattr(namespace, "_seen_options", set())
@@ -29,7 +50,7 @@ class SingleValue(argparse.Action):
 
 
 def parser() -> argparse.ArgumentParser:
-    cli = argparse.ArgumentParser(description=__doc__, epilog="Acceptance does not verify ownership or final delivery. No email is submitted.")
+    cli = ConsoleParser(description=__doc__, epilog="Acceptance does not verify ownership or final delivery. No email is submitted.")
     cli.add_argument("--symlink-cli", action="store_true", help="Link the installed command into ~/bin and exit; use this option alone.")
     cli.add_argument("--target", metavar="ADDRESS", action=SingleValue, help="Required for probing: single recipient.")
     cli.add_argument("--mail-from", metavar="ADDRESS", dest="sender", action=SingleValue, help="Required for probing: operator envelope sender.")
@@ -194,35 +215,46 @@ def prepare_output(path: str) -> tuple[Path, Path]:
 
 
 def print_report(report: dict) -> None:
-    print(f"Target: {terminal_safe(report['target'])}")
-    print(f"Result: {report['status']}")
-    print(f"Meaning: {terminal_safe(report['explanation'])}")
+    execution_error = (
+        not report["invariant_ok"]
+        or report["status"] == "dns_configuration_error"
+        or (report["status"] == "inconclusive" and not report["hosts"])
+    )
+    message(f"Target: {report['target']}")
+    message(f"Result: {report['status']}", error=execution_error)
+    message(f"Meaning: {report['explanation']}", error=execution_error)
     if report.get("internal_error"):
-        print(f"Internal error: {terminal_safe(report['internal_error'])}")
+        message(f"Internal error: {report['internal_error']}", error=True)
     for host in report["hosts"]:
-        print(f"MX {terminal_safe(host['host'])}: {host['status']} (TLS: {terminal_safe(host['tls'])})")
-        print(f"  Meaning: {terminal_safe(host['explanation'])}")
+        message(f"MX {host['host']}: {host['status']} (TLS: {host['tls']})")
+        message(f"  Meaning: {host['explanation']}")
         for recipient in ("target", "control"):
             observation = host.get(recipient, {})
             if observation.get("code") is not None:
                 reply = str(observation.get("reply", ""))
                 if not reply.startswith(str(observation["code"])):
                     reply = f"{observation['code']} {reply}"
-                print(f"  {recipient}: {terminal_safe(reply)}")
+                message(f"  {recipient}: {terminal_safe(reply)}")
         if host.get("error"):
-            print(f"  Diagnostic: {terminal_safe(host['error'])}")
+            message(f"  Diagnostic: {host['error']}", error=True)
     for note in report.get("coverage_notes", []):
-        print(f"Coverage: {terminal_safe(note)}")
+        message(f"Coverage: {note}")
     for step in report.get("planned_operations", []):
-        print(f"Plan: {step}")
+        message(f"Plan: {step}")
     if report["invariant_ok"]:
-        print("Message submitted: no")
+        message("Message submitted: no")
     else:
-        print("Command invariant: internal error; review the transcript.")
-    print("Ownership verified: no")
+        message("Command invariant: internal error; review the transcript.", error=True)
+    message("Ownership verified: no")
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        from smtp_probe_build import BUILD_TIMESTAMP
+    except ImportError:
+        message("Build metadata missing. Install from the project directory with: python -m pip install -e .", error=True)
+        return 3
+    print(f"== smtp-recipient-probe {BUILD_TIMESTAMP}", flush=True)
     temporary = None
     try:
         try:
@@ -238,35 +270,36 @@ def main(argv: list[str] | None = None) -> int:
                     cli.error("the following arguments are required for probing: " + ", ".join(missing))
         except SystemExit as exc:
             if exc.code:
-                print("Result: invalid_input\nNo network operations performed.", file=sys.stderr)
+                invalid_input()
             return int(exc.code)
         if args.symlink_cli:
             try:
                 destination = symlink_cli()
             except (OSError, RuntimeError) as exc:
-                print(f"Could not create CLI symlink: {terminal_safe(exc)}", file=sys.stderr)
+                message(f"Could not create CLI symlink: {exc}", error=True)
                 return 3
-            print(f"CLI symlink ready: {terminal_safe(destination)} -> {terminal_safe(destination.readlink())}")
-            print("Ensure ~/bin is on PATH to run smtp-recipient-probe without activating the environment.")
+            message(f"CLI symlink ready: {destination} -> {destination.readlink()}")
+            message("Ensure ~/bin is on PATH to run smtp-recipient-probe without activating the environment.")
             return 0
         try:
             settings = validate_settings(args)
         except ValueError as exc:
-            print(f"Result: invalid_input\nReason: {terminal_safe(exc)}\nNo network operations performed.", file=sys.stderr)
+            invalid_input(exc)
             return 2
         if args.json:
             try:
                 destination, temporary = prepare_output(args.json)
             except ValueError as exc:
-                print(f"Result: invalid_input\nReason: {terminal_safe(exc)}\nNo network operations performed.", file=sys.stderr)
+                invalid_input(exc)
                 return 2
             except OSError as exc:
-                print(f"Could not prepare JSON report: {terminal_safe(exc)}\nNo network operations performed.", file=sys.stderr)
+                message(f"Could not prepare JSON report: {exc}", error=True)
+                message("No network operations performed.")
                 return 3
         try:
             report = run_probe(settings)
         except ImportError as exc:
-            print(f"Dependency missing: {terminal_safe(exc)}. Install with: python -m pip install -e .", file=sys.stderr)
+            message(f"Dependency missing: {exc}. Install with: python -m pip install -e .", error=True)
             return 3
         print_report(report)
         if temporary is not None:
@@ -275,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
                 os.replace(temporary, destination)
                 temporary = None
             except OSError as exc:
-                print(f"Could not write JSON report: {terminal_safe(exc)}", file=sys.stderr)
+                message(f"Could not write JSON report: {exc}", error=True)
                 return 3
         return 0 if report["invariant_ok"] else 3
     finally:
