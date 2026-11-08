@@ -115,20 +115,20 @@ smtp-recipient-probe --target "$target" --json result.json
 
 From the project directory, the script form works too: `.venv/bin/python smtp_recipient_probe.py` followed by the same arguments. No mailbox password is required. No addresses are hard-coded or probed during installation or testing.
 
-| Argument | Meaning |
-| --- | --- |
-| `--symlink-cli` | Standalone setup command: create or update the launcher in `~/bin`, then exit. |
-| `--target ADDRESS` | Required single recipient when probing. |
-| `--mail-from ADDRESS` | Envelope sender; overrides `SMTP_PROBE_MAIL_FROM` and config `smtp.mail_from`. A value must be provided by one of these sources. |
-| `--helo NAME` | Client FQDN or SMTP IP literal; overrides `SMTP_PROBE_HELO` and config `smtp.helo`. A value must be provided by one of these sources. |
-| `--config PATH` | Use this TOML file instead of automatic config discovery. |
-| `--control auto\|none\|ADDRESS` | Default `auto`: generate one random presumed nonexistent control in the target domain and reuse it across MX hosts. `none` disables it; an explicit control must be a different address in the same domain. |
-| `--max-mx N` | Maximum distinct MX hosts, 1–3; default 2. |
-| `--timeout SECONDS` | Per-operation timeout; default 15. |
-| `--deadline SECONDS` | Total run deadline; default 120. |
-| `--tls auto\|required` | Default `auto`: use STARTTLS when advertised; otherwise record plaintext. `required` stops before recipient testing when STARTTLS is unavailable. Certificate verification failures never cause a plaintext retry. |
-| `--json PATH` | Also save the structured report, including per-host replies and command transcript. |
-| `--dry-run` | Validate inputs and describe the plan without DNS or network activity. |
+| Argument                        | Meaning                                                                                                                                                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--symlink-cli`                 | Standalone setup command: create or update the launcher in `~/bin`, then exit.                                                                                                                                     |
+| `--target ADDRESS`              | Required single recipient when probing.                                                                                                                                                                            |
+| `--mail-from ADDRESS`           | Envelope sender; overrides `SMTP_PROBE_MAIL_FROM` and config `smtp.mail_from`. A value must be provided by one of these sources.                                                                                   |
+| `--helo NAME`                   | Client FQDN or SMTP IP literal; overrides `SMTP_PROBE_HELO` and config `smtp.helo`. A value must be provided by one of these sources.                                                                              |
+| `--config PATH`                 | Use this TOML file instead of automatic config discovery.                                                                                                                                                          |
+| `--control auto\|none\|ADDRESS` | Default `auto`: generate one random presumed nonexistent control in the target domain and reuse it across MX hosts. `none` disables it; an explicit control must be a different address in the same domain.        |
+| `--max-mx N`                    | Maximum distinct MX hosts, 1–3; default 2.                                                                                                                                                                         |
+| `--timeout SECONDS`             | Per-operation timeout; default 15.                                                                                                                                                                                 |
+| `--deadline SECONDS`            | Total run deadline; default 120.                                                                                                                                                                                   |
+| `--tls auto\|required`          | Default `auto`: use STARTTLS when advertised; otherwise record plaintext. `required` stops before recipient testing when STARTTLS is unavailable. Certificate verification failures never cause a plaintext retry. |
+| `--json PATH`                   | Also save the structured report, including per-host replies and command transcript.                                                                                                                                |
+| `--dry-run`                     | Validate inputs and describe the plan without DNS or network activity.                                                                                                                                             |
 
 Only ordinary ASCII dot-atom email local parts and DNS domains are supported. Quoted local parts, internationalized addresses, display names, address lists, and control characters are rejected. Local-part case is preserved; domain case is normalized.
 
@@ -145,16 +145,18 @@ Each invocation starts with `== smtp-recipient-probe YYYY-MM-DD_HH:MM`. The time
 
 Primary output starts with `.. `: the target, overall `Result` and `Meaning`, MX server headings, each server's `MX result` and `Meaning`, final submission/ownership statements, and launcher setup success. Supporting details start with `.... `: the control address, plans, individual target/control observations and SMTP replies, coverage notes, and usage guidance. Execution-error messages retain `** `, and the build banner retains `== `.
 
-This simulated excerpt shows the distinction:
+The report is printed after probing finishes. Within each MX server section, Test 1 shows the target and its SMTP reply before `Test 1 result`; Test 2 then does the same for the control before `Test 2 result`. The server's `MX result` and `Meaning` follow both checks. After all MX sections and any coverage notes or dry-run plans, the overall `Result` and `Meaning` appear, followed by the submission and ownership statements.
+
+This simulated excerpt shows one MX section in that order:
 
 ```text
 .. MX server 1/2: mx.example.com (TLS: verified)
 .... Test 1 - target address you supplied: recipient@example.com
-.... Result: accepted
 .... SMTP reply: 250 2.1.5 OK
+.... Test 1 result: accepted
 .... Test 2 - presumed nonexistent control: control@example.com
-.... Result: recipient_unavailable
 .... SMTP reply: 550 5.1.1 No such recipient
+.... Test 2 result: recipient_unavailable
 .. MX result: accepted_selectively
 .. Meaning: Target accepted; presumed nonexistent control returned 550/5.1.1. This server distinguished the recipients; ownership is unknown.
 ```
@@ -183,11 +185,11 @@ Connections go directly to MX servers on TCP port 25. Outbound port 25 may be bl
 
 The JSON report retains DNS records, selected/tested/skipped hosts, IP and address family, TLS state, SMTP and enhanced codes, bounded replies, cleanup results, and a timed transcript. `message_submitted` and `ownership_verified` are false. An internal command-guard failure aborts with diagnostics rather than reporting clean success.
 
-| Exit code | Meaning |
-| --- | --- |
-| `0` | Launcher setup succeeded, or a report was produced (including an inconclusive result). Inspect report status; zero does not mean “valid email.” |
-| `2` | Invalid arguments or unsupported input. |
-| `3` | Launcher setup failed, an internal invariant failed, or the requested report could not be written. |
+| Exit code | Meaning                                                                                                                                         |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`       | Launcher setup succeeded, or a report was produced (including an inconclusive result). Inspect report status; zero does not mean “valid email.” |
+| `2`       | Invalid arguments or unsupported input.                                                                                                         |
+| `3`       | Launcher setup failed, an internal invariant failed, or the requested report could not be written.                                              |
 
 ## Local tests
 
